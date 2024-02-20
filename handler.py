@@ -49,19 +49,7 @@ class handler_LLM:
         if self.strat == "CS":
             self.encoder = copy.deepcopy(self.student.model.model).cpu()
 
-    def oracle_check(self, input):
-        tgt = torch.flatten(input.llm_hard).tolist()
-        for idx, element in enumerate(torch.flatten(input.gold_hard).tolist()):
-            if element != tgt[idx]:
-                return False
-        return True
 
-    def oracle_check_BT(self, input):
-        aux = input.llm_soft[0].sort().values.tolist()
-        BT = abs(aux[-1] - aux[-2])
-        if BT > self.oracle_BT:
-            return True
-        return False
 
     def call_llm(self, input):
         if self.target == "gold":

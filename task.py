@@ -173,11 +173,11 @@ class Task:
 
         for split in self.data_path.keys():
             max_samples = getattr(args, f"{split}_samples")
-            self.raw_data[split] = random_subset(
-                dataset=self.raw_data[split],
-                max_samples=max_samples,
-                seed=args.seed,
-            )
+            #self.raw_data[split] = random_subset(
+            #    dataset=self.raw_data[split],
+            #    max_samples=max_samples,
+            #    seed=args.seed,
+            #)
 
             self.raw_data[split] = arrow_dataset.Dataset.from_list(
                 list(self.raw_data[split])
@@ -191,7 +191,7 @@ class Task:
 
         online_dataloader = DataLoader(
             processed_data["train"],
-            shuffle=True,
+            shuffle=False,
             collate_fn=data_collator,
             batch_size=1,
         )
@@ -215,23 +215,14 @@ class Task:
             else:
                 idx_right.append(idx)
 
-        test_wrong = processed_data["test"].select(idx_wrong)
-        test_wrong_dataloader = DataLoader(
-            test_wrong,
-            collate_fn=eval_collator,
-            batch_size=args.per_device_eval_batch_size,
-        )
-
-        online_dataloader, test_dataloader, test_wrong_dataloader = accelerator.prepare(
+        online_dataloader, test_dataloader = accelerator.prepare(
             online_dataloader,
             test_dataloader,
-            test_wrong_dataloader,
         )
 
         self.data = {
             "online_dataloader": online_dataloader,
             "test_dataloader": test_dataloader,
-            "test_wrong_dataloader": test_wrong_dataloader,
         }
         return
 
