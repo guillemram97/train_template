@@ -42,7 +42,6 @@ class student:
         self.args = get_hparams(args, self.task_name)
         self.init_model()
         self.test = task.data["test_dataloader"]
-        self.test_wrong = task.data["test_wrong_dataloader"]
         self.run = run
         self.seed = args.seed
         self.accelerator = accelerator
@@ -128,30 +127,10 @@ class student:
         )
 
         self.metric_test.reset()
-        test_metric_wrong_gold = evaluate_model(
-            model=self.model,
-            accelerator=self.accelerator,
-            eval_dataloader=self.test_wrong,
-            metric=self.metric_test,
-            args=self.args,
-            dic_classes=self.dic_classes,
-            target="gold",
-        )
-
-        self.metric_test.reset()
         test_metric_llm = evaluate_model(
             model=self.model,
             accelerator=self.accelerator,
             eval_dataloader=self.test,
-            metric=self.metric_test,
-            args=self.args,
-            dic_classes=self.dic_classes,
-            target="llm",
-        )
-        test_metric_wrong_llm = evaluate_model(
-            model=self.model,
-            accelerator=self.accelerator,
-            eval_dataloader=self.test_wrong,
             metric=self.metric_test,
             args=self.args,
             dic_classes=self.dic_classes,
@@ -162,8 +141,6 @@ class student:
             stats = {
                 "test_gold_acc": test_metric_gold[0],
                 "test_llm_acc": test_metric_llm[0],
-                "test_wrong_gold_acc": test_metric_wrong_gold[0],
-                "test_wrong_llm_acc": test_metric_wrong_llm[0],
                 "data amount": self.data_amount,
             }
             # if len(test_metric_gold) == 2:
