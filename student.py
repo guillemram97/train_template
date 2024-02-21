@@ -63,15 +63,17 @@ class student:
     def init_model(self):
         set_seeds(self.seed)
         model = get_model(self.args)
-        self.model = ModularMixin(
-            model,
-            freeze=True,
-            ac_kwargs={
-                "r": self.args.r,
-                "lora_scaling": self.args.lora_scaling,
-                "seed": self.seed,
-            },
-        )
+        model.cuda()
+        self.model = model
+        #self.model = ModularMixin(
+        #    model,
+        #    freeze=True,
+        #    ac_kwargs={
+        #        "r": self.args.r,
+        #        "lora_scaling": self.args.lora_scaling,
+        #        "seed": self.seed,
+        #    },
+        #)
         return
 
     def init_checkpoint(self, PATH):
@@ -108,7 +110,7 @@ class student:
                     },
                     num_beams=self.args.num_beams,
                     max_length=self.args.max_out_length,
-                    decoder_start_token_id=self.model.model.config.bos_token_id,
+                    decoder_start_token_id=self.model.config.bos_token_id,
                 )
         elapsed = time.time() - t
         print(elapsed)
@@ -278,51 +280,3 @@ class student:
             )
             torch.save(self.model.state_dict(), PATH_DEST)
 
-
-# estem fent servir CUDA per fer prediccions!
-class aux_student:
-    def __init__(self, model, args, task):
-        self.model = model
-        self.task_name = args.task_name
-        self.args = args
-        self.task = task
-        self.soft_labels = args.soft_labels
-        if task.is_classification:
-            self.dic_classes = list(task.classes_dict_gold.values())
-        else:
-            self.dic_classes = None
-
-    def query(self, input):
-        torch.cuda.empty_cache()
-        self.model.eval()
-        # self.model.cuda()
-        with torch.no_grad():
-            if self.soft_labels:
-                predictions = self.model.generate(
-                    **{
-                        "input_ids": input["input_ids"].cpu(),  # .cuda(),
-                        "attention_mask": input["attention_mask"].cpu(),  # .cuda(),
-                    },
-                    max_new_tokens=1,
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                )
-                predictions = [
-                    torch.tensor(
-                        list(np.array(predictions[1][0].cpu())[0][self.dic_classes])
-                    )
-                ]
-            else:
-                predictions = self.model.generate(
-                    **{
-                        "input_ids": input["input_ids"],  # .cuda(),
-                        "attention_mask": input["attention_mask"],  # .cuda(),
-                    },
-                    num_beams=self.args.num_beams,
-                    max_length=self.args.max_out_length,
-                    decoder_start_token_id=self.model.model.config.bos_token_id,
-                )
-        self.model.cpu()
-        input["input_ids"].cuda()
-        input["attention_mask"].cuda()
-        return predictions
