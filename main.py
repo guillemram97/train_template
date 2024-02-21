@@ -5,14 +5,11 @@ from utils import (
     set_seeds,
 )
 from utils.online_logs import (
-    reset_avg_online_metrics,
-    log_avg_online,
     log_test,
     log_final,
 )
 import numpy as np
 from metrics import Metric
-from handler import handler_LLM
 from student import student
 from cache import cache_store
 from accelerate import Accelerator

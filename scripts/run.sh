@@ -2,10 +2,10 @@
 source scripts/cluster.sh
 # Neptune tags 
 TAGS="${TAGS:=debug}"
-SAVE_CHECKPOINT="${SAVE_CHECKPOINT:=no}"
+SAVE_CHECKPOINT="${SAVE_CHECKPOINT:=yes}"
 
 TASK_NAME="${TASK_NAME:=isear}"
-MODEL_NAME_OR_PATH="${BASE_MODEL:=t5-base}"
+MODEL_NAME_OR_PATH="${BASE_MODEL:=distilbert-base-uncased}"
 BUDGET="${BUDGET:=1000}"
 COST_EXT="${COST_EXT:=1}"
 RETRAIN_FREQ="${RETRAIN_FREQ:=100}"

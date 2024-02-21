@@ -12,7 +12,7 @@ from torch.nn import CrossEntropyLoss, Softmax
 
 from utils import set_seeds
 
-from transformers import T5ForConditionalGeneration, BertModel, AutoModelForCausalLM, AutoModelForSeq2SeqLM, GPTNeoXForCausalLM
+from transformers import T5ForConditionalGeneration, BertModel, AutoModelForCausalLM, AutoModelForSeq2SeqLM, GPTNeoXForCausalLM, AutoModelForSequenceClassification
 
 
 cross_entropy = CrossEntropyLoss()
@@ -28,6 +28,8 @@ def get_model(args):
         model = T5ForConditionalGeneration.from_pretrained(args.model_name_or_path,)
     elif args.model_name_or_path in ['EleutherAI/pythia-1b-deduped']:
         model = GPTNeoXForCausalLM.from_pretrained(args.model_name_or_path)
+    elif args.model_name_or_path in ["distilbert-base-uncased"]:
+        model = AutoModelForSequenceClassification.from_pretrained(args.model_name_or_path, num_labels=2)
     return model
 
 
@@ -166,13 +168,6 @@ def evaluate_model(
                     return_dict_in_generate=True,
                 )
                 predictions = list(np.array(predictions[1][0].cpu())[:, dic_classes])
-
-                # fix a formatting bug
-                if type(batch[target + "_soft"]) == torch.Tensor:
-                    batch[target + "_soft"] = [aux for aux in batch[target + "_soft"]]
-                predictions, references = accelerator.gather(
-                    (predictions, batch[target + "_soft"])
-                )
             else:
                 predictions = model.generate(
                     **{
@@ -181,7 +176,7 @@ def evaluate_model(
                     },
                     num_beams=args.num_beams,
                     max_length=args.max_out_length,
-                    decoder_start_token_id=model.model.config.bos_token_id,
+                    decoder_start_token_id=model.config.bos_token_id,
                 )
                 predictions, references = accelerator.gather(
                     (predictions, batch[target + "_hard"])
