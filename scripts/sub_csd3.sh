@@ -16,12 +16,14 @@ conda activate cache
 
 cd /home/$USER/cache_llm
 
-
-#export TRAIN_SAMPLES=10000
-#export RETRAIN_FREQ=100
-export TARGET=llm
 export PART=csd3
 export DATA_PATH=/rds/user/cs-rami1/rds-t2-cs119/guillem/datasets/data
 
 bash scripts/cluster.sh
+export BUDGET=100
+export RETRAIN_FREQ=100
 bash scripts/run.sh
+export BUDGET=2000
+export RETRAIN_FREQ=500
+bash scripts/run.sh
+

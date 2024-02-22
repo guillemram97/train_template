@@ -30,7 +30,7 @@ import numpy as np
 
 logger = get_logger(__name__)
 
-LOG_TRAIN = False
+LOG_TRAIN = True
 
 
 class student:
@@ -39,6 +39,7 @@ class student:
         self.task_name = args.task_name
         self.seed = args.seed
         self.target = args.target
+        self.n_classes = len(list(task.classes_dict_gold.keys()))
         self.args = get_hparams(args, self.task_name)
         self.init_model()
         self.test = task.data["test_dataloader"]
@@ -62,18 +63,9 @@ class student:
 
     def init_model(self):
         set_seeds(self.seed)
-        model = get_model(self.args)
+        model = get_model(self.args, self.n_classes)
         model.cuda()
         self.model = model
-        #self.model = ModularMixin(
-        #    model,
-        #    freeze=True,
-        #    ac_kwargs={
-        #        "r": self.args.r,
-        #        "lora_scaling": self.args.lora_scaling,
-        #        "seed": self.seed,
-        #    },
-        #)
         return
 
     def init_checkpoint(self, PATH):
@@ -81,44 +73,9 @@ class student:
         self.model.cuda()
         return
 
-    def query(self, input):
-        torch.cuda.empty_cache()
-        self.model.eval()
-        self.model.cuda()
-        t = time.time()
-        with torch.no_grad():
-            if self.soft_labels:
-                predictions = self.model.generate(
-                    **{
-                        "input_ids": input["input_ids"].cuda(),
-                        "attention_mask": input["attention_mask"].cuda(),
-                    },
-                    max_new_tokens=1,
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                )
-                predictions = [
-                    torch.tensor(
-                        list(np.array(predictions[1][0].cpu())[0][self.dic_classes])
-                    )
-                ]
-            else:
-                predictions = self.model.generate(
-                    **{
-                        "input_ids": input["input_ids"].cuda(),
-                        "attention_mask": input["attention_mask"].cuda(),
-                    },
-                    num_beams=self.args.num_beams,
-                    max_length=self.args.max_out_length,
-                    decoder_start_token_id=self.model.config.bos_token_id,
-                )
-        elapsed = time.time() - t
-        print(elapsed)
-        return predictions
-
     def evaluate(self):
         self.metric_test.reset()
-        test_metric_gold = evaluate_model(
+        test_metric = evaluate_model(
             model=self.model,
             accelerator=self.accelerator,
             eval_dataloader=self.test,
@@ -128,38 +85,19 @@ class student:
             target="gold",
         )
 
-        self.metric_test.reset()
-        test_metric_llm = evaluate_model(
-            model=self.model,
-            accelerator=self.accelerator,
-            eval_dataloader=self.test,
-            metric=self.metric_test,
-            args=self.args,
-            dic_classes=self.dic_classes,
-            target="llm",
-        )
-
         if self.run is not None:
             stats = {
-                "test_gold_acc": test_metric_gold[0],
-                "test_llm_acc": test_metric_llm[0],
+                "test_gold_acc": test_metric[0],
+                "test_gold_f1": test_metric[1],
                 "data amount": self.data_amount,
             }
-            # if len(test_metric_gold) == 2:
-            #    stats["test_gold_CE"] = test_metric_gold[1]
-            # if len(test_metric_llm) == 2:
-            #    stats["test_llm_CE"] = test_metric_gold[1]
+            neptune_log(
+                run=self.run,
+                pref=f"test/",
+                stats=stats,
+                epoch=self.iteration,
+            )
 
-            for suffix in self.suffixes:
-                neptune_log(
-                    run=self.run,
-                    pref=f"test/" + suffix,
-                    stats=stats,
-                    epoch=self.iteration,
-                )
-        self.test_scores_gold = [self.test_scores_gold[1], test_metric_gold[0]]
-        self.test_scores_llm = [self.test_scores_llm[1], test_metric_llm[0]]
-        self.suffixes = [""]
 
     def train(self, train_dataloader, eval_dataloader):
         torch.cuda.empty_cache()
@@ -230,14 +168,15 @@ class student:
 
                 # early stopper requires an increasingly increasing metric
                 # we can use epochs instead of eval_metrics[0]
-                self.early_stopper.update(eval_metrics[0], self.model)
+                self.early_stopper.update(eval_metrics[-1], self.model)
                 self.model.cuda()
 
                 log_msg = f"Epoch {epoch} -----> Average_Train_loss: {total_loss / len(train_dataloader.dataset)} ===== Eval_metric: {eval_metrics[0]}"
                 logger.info(log_msg)
 
                 if self.run is not None and LOG_TRAIN:
-                    self.run[f"{self.iteration}-eval"].log(eval_metrics[0], step=epoch)
+                    self.run[f"{self.iteration}-eval-acc"].log(eval_metrics[0], step=epoch)
+                    self.run[f"{self.iteration}-eval-f1"].log(eval_metrics[1], step=epoch)
 
             # log metrics are desactivated
             if self.run is not None and LOG_TRAIN:
@@ -246,12 +185,12 @@ class student:
                     "main_lr": optimizer.param_groups[0]["lr"],
                 }
 
-                # neptune_log(
-                #    run=self.run,
-                #    pref=f"{self.iteration}-train/",
-                #    stats=stats,
-                #    epoch=epoch,
-                # )
+                neptune_log(
+                    run=self.run,
+                    pref=f"{self.iteration}-train/",
+                    stats=stats,
+                    epoch=epoch,
+                 )
 
             if self.early_stopper.should_finish():
                 break

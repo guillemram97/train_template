@@ -60,22 +60,23 @@ def main():
 
     for step, sample in enumerate(online_dataloader):
         # IF WE HAVE A CHECKPOINT, WE SKIP N_INIT STEPS
-        if args.checkpoint == "-1" or step >= args.n_init:
-            gc.collect()
-            cache.save_cache(sample)
+        if step < int(args.budget):
+            if args.checkpoint == "-1" or step >= args.n_init:
+                gc.collect()
+                cache.save_cache(sample)
 
-            if step + 1 and (step + 1) % args.retrain_freq == 0 and not stop_retraining:
-                set_seeds(args.seed)
-                cache_tmp = cache.retrieve_cache()
-                train_dataloader, eval_dataloader = make_datacollator(
-                    args, task.tokenizer, cache_tmp
-                )
-                train_dataloader, eval_dataloader = accelerator.prepare(
-                    train_dataloader, eval_dataloader
-                )
-                st.train(train_dataloader, eval_dataloader)
+                if step + 1 and (step + 1) % args.retrain_freq == 0 and not stop_retraining:
+                    set_seeds(args.seed)
+                    cache_tmp = cache.retrieve_cache()
+                    train_dataloader, eval_dataloader = make_datacollator(
+                        args, task.tokenizer, cache_tmp
+                    )
+                    train_dataloader, eval_dataloader = accelerator.prepare(
+                        train_dataloader, eval_dataloader
+                    )
+                    st.train(train_dataloader, eval_dataloader)
 
-                del train_dataloader, eval_dataloader
+                    del train_dataloader, eval_dataloader
 
     if run is not None:
         run.stop()

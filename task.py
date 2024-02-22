@@ -45,10 +45,6 @@ class Task:
                     fin = pd.read_csv(os.path.join(self.path, split_path), nrows=1000)
             inputs = list(fin["input"].values.astype(str))
             gold_hard = list(fin["gold_hard"].values.astype(str))
-            if "llm_soft" in fin.columns:
-                llm_soft = list(fin["llm_soft"].values.astype(str))
-            if "llm_hard" in fin.columns:
-                llm_hard = list(fin["llm_hard"].values.astype(str))
 
             ## preferred to remove this
             if self.task_name == "quoref":
@@ -67,8 +63,6 @@ class Task:
                 {
                     "inputs": inputs,
                     "gold_hard": gold_hard,
-                    "llm_hard": llm_hard,
-                    "llm_soft": llm_soft,
                 }
             )
         self.raw_data = datasets.DatasetDict(data)
@@ -95,41 +89,25 @@ class Task:
 
             if self.is_classification:
                 out["gold_soft"] = make_soft(batch["gold_hard"], target="gold")
-                if not self.soft_labels:
-                    out["llm_soft"] = make_soft(batch["llm_hard"], target="llm")
-                else:
-                    out["llm_soft"] = select_classes(batch["llm_soft"])
 
-            # Don't encode for validation/test
-            # now we always do this!!!!!
-            # FIX!!!!!!!!!!!!!!
-            # FIX!!!!!!!!!!!!!!
-            if is_eval:
-                out["gold_hard"] = batch["gold_hard"]
-                out["llm_hard"] = batch["llm_hard"]
-            else:
+
                 # limited to max_out_length
-                out["gold_hard"] = self.tokenizer(
-                    batch["gold_hard"],
-                    padding=False,
-                    max_length=args.max_out_length,
-                    truncation=True,
-                ).input_ids
-                out["llm_hard"] = self.tokenizer(
-                    batch["llm_hard"],
-                    padding=False,
-                    max_length=args.max_out_length,
-                    truncation=True,
-                ).input_ids
+                if self.is_classification:
+                    out["gold_hard"] = [list(self.classes_dict_gold.keys()).index(element) for element in batch['gold_hard']]
+                else:
+                    out["gold_hard"] = self.tokenizer(
+                        batch["gold_hard"],
+                        padding=False,
+                        max_length=args.max_out_length,
+                        truncation=True,
+                    ).input_ids
             return out
 
         def collate_for_eval(default_collate, batch):
             inputs = [{"input_ids": x["input_ids"]} for x in batch]
             out = default_collate(inputs)
-            out["llm_hard"] = [x["llm_hard"] for x in batch]
             out["gold_hard"] = [x["gold_hard"] for x in batch]
             if self.is_classification:
-                out["llm_soft"] = [x["llm_soft"] for x in batch]
                 out["gold_soft"] = [x["gold_soft"] for x in batch]
             return out
 
@@ -207,13 +185,6 @@ class Task:
             tgt = (processed_data["test"]["gold_soft"][idx]).index(
                 max(processed_data["test"]["gold_soft"][idx])
             )
-            llm_pred = (processed_data["test"]["llm_soft"][idx]).index(
-                max(processed_data["test"]["llm_soft"][idx])
-            )
-            if tgt != llm_pred:
-                idx_wrong.append(idx)
-            else:
-                idx_right.append(idx)
 
         online_dataloader, test_dataloader = accelerator.prepare(
             online_dataloader,
