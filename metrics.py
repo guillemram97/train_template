@@ -65,6 +65,7 @@ class Metric:
         self.online = online
         self.args = args
         self.soft = soft
+        self.classification = True
 
     def reset(self):
         self.predictions = []
@@ -88,7 +89,12 @@ class Metric:
         self.references = self.references + references
 
     def compute(self):
-        if self.soft:
+        if self.classification:
+            metrics = evaluate_classification(
+                self.predictions, self.references
+            )
+
+        elif self.soft:
             metrics = evaluate_soft(
                 self.predictions, self.references, self.args.temperature
             )
@@ -115,6 +121,14 @@ def evaluate_soft(predictions, data, temperature=1):
     # sum(accuracy) / len(data)
     # f1_score(new_data, new_predictions, average="macro")
     return [sum(accuracy) / len(data), sum(cross_entropy_score) / len(data)]
+
+
+def evaluate_classification(predictions, data):
+    acc = 0
+    for idx, pred in enumerate(predictions):
+        acc += 1*(pred==data[idx])
+    acc = acc / len(data)
+    return [acc, f1_score(predictions, data, average='macro')]
 
 
 def evaluate_hard(predictions, data, task):
