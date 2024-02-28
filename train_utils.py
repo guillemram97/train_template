@@ -96,8 +96,10 @@ def train_epoch(
     lr_scheduler,
     optimizer,
     args,
+    classification,
     dic_classes=None,
-):
+    ):
+
     model.train()
     set_seeds(args.seed)
     total_loss = 0
@@ -113,7 +115,10 @@ def train_epoch(
                 attention_mask=batch.attention_mask,
                 labels=batch.gold_hard,
             )
-            loss = outputs.loss
+            if not classification:
+                loss = ((outputs.logits - batch.gold_hard)**2).mean()
+            else:
+                loss = outputs.loss
 
         total_loss += loss.detach().float().item()
         losses.append(loss.detach().float().item())
@@ -141,8 +146,10 @@ def evaluate_model(
     for step, batch in tqdm(enumerate(eval_dataloader)):
         with torch.no_grad():
             if model.config._name_or_path=='distilbert-base-uncased':
-                predictions = torch.tensor(model(input_ids=batch.input_ids, attention_mask=batch.attention_mask).logits).argmax(1)
-                predictions = predictions.tolist()
+                if metric.soft == False:
+                    predictions = torch.tensor(model(input_ids=batch.input_ids, attention_mask=batch.attention_mask).logits).argmax(1) #aixo diferent
+                else:
+                    predictions = model(input_ids=batch.input_ids, attention_mask=batch.attention_mask).logits[:, 0].tolist()
                 references = batch.gold_hard
                 if torch.is_tensor(references):
                     references = [ref[0] for ref in references.tolist()]

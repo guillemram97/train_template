@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --time=05:00:00
+#SBATCH --time=01:00:00
 #SBATCH -A NLP-CDT-SL2-GPU
 #SBATCH -p ampere
 #SBATCH --nodes=1

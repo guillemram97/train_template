@@ -101,6 +101,8 @@ class Task:
                         max_length=args.max_out_length,
                         truncation=True,
                     ).input_ids
+            else:
+                out["gold_hard"] = [float(b) for b in batch['gold_hard']]
             return out
 
         def collate_for_eval(default_collate, batch):
@@ -179,13 +181,7 @@ class Task:
             collate_fn=eval_collator,
             batch_size=args.per_device_eval_batch_size,
         )
-        idx_wrong = []
-        idx_right = []
-        for idx in range(len(processed_data["test"])):
-            tgt = (processed_data["test"]["gold_soft"][idx]).index(
-                max(processed_data["test"]["gold_soft"][idx])
-            )
-
+        
         online_dataloader, test_dataloader = accelerator.prepare(
             online_dataloader,
             test_dataloader,
