@@ -52,7 +52,7 @@ class Metric:
     Not during training
     """
 
-    def __init__(self, args, soft=False, online=False):
+    def __init__(self, args, soft=False, classification=False):
         self.task_name = args.task_name
         #self.tokenizer = BertTokenizer.from_pretrained(
         #    args.model_name_or_path, model_max_length=args.max_length
@@ -62,10 +62,10 @@ class Metric:
         )
         self.predictions = []
         self.references = []
-        self.online = online
+        self.online = False
         self.args = args
         self.soft = soft
-        self.classification = True
+        self.classification = classification
 
     def reset(self):
         self.predictions = []
@@ -95,14 +95,19 @@ class Metric:
             )
 
         elif self.soft:
-            metrics = evaluate_soft(
-                self.predictions, self.references, self.args.temperature
+            metrics = evaluate_soft_regression(
+                self.predictions, self.references
             )
         else:
             metrics = evaluate_hard(self.predictions, self.references, self.task_name)
         self.reset()
         return metrics
 
+def evaluate_soft_regression(predictions, data):
+    diff = 0
+    for idx, pred in enumerate(predictions):
+        diff += (pred-data[0])**2
+    return [diff/(idx+1)]
 
 def evaluate_soft(predictions, data, temperature=1):
     cross_entropy_score = []

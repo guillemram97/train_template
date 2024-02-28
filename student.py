@@ -39,9 +39,7 @@ class student:
         self.task_name = args.task_name
         self.seed = args.seed
         self.target = args.target
-        self.n_classes = len(list(task.classes_dict_gold.keys()))
         self.args = get_hparams(args, self.task_name)
-        self.init_model()
         self.test = task.data["test_dataloader"]
         self.run = run
         self.seed = args.seed
@@ -52,14 +50,20 @@ class student:
         self.test_scores_gold = [0, 0]
         self.test_scores_llm = [0, 0]
         self.suffixes = [""]
+        self.is_classification = task.is_classification
         if task.is_classification:
             self.dic_classes = list(task.classes_dict_gold.values())
+            self.n_classes = len(list(task.classes_dict_gold.keys()))
         else:
             self.dic_classes = None
+            self.n_classes = 1
+            self.soft_labels = True
+        
+        self.init_model()
 
         # need to revise these two!!!!
-        self.metric = Metric(self.args, soft=self.args.is_classification)
-        self.metric_test = Metric(self.args, soft=self.args.is_classification)
+        self.metric = Metric(self.args, soft=self.soft_labels, classification=task.is_classification)
+        self.metric_test = Metric(self.args, soft=self.soft_labels, classification=task.is_classification)
 
     def init_model(self):
         set_seeds(self.seed)
@@ -86,11 +90,17 @@ class student:
         )
 
         if self.run is not None:
-            stats = {
-                "test_gold_acc": test_metric[0],
-                "test_gold_f1": test_metric[1],
-                "data amount": self.data_amount,
-            }
+            if self.is_classification:
+                stats = {
+                    "test_gold_acc": test_metric[0],
+                    "test_gold_f1": test_metric[1],
+                    "data amount": self.data_amount,
+                }
+            else:
+                stats = {
+                        "test_gold_L2": test_metric[0],
+                        "data amount": self.data_amount,
+                }    
             neptune_log(
                 run=self.run,
                 pref=f"test/",
@@ -102,7 +112,7 @@ class student:
     def train(self, train_dataloader, eval_dataloader):
         torch.cuda.empty_cache()
         t = time.time()
-        self.early_stopper = EarlyStopper(self.args.early_stop)
+        self.early_stopper = EarlyStopper(self.args.early_stop, self.is_classification)
         self.iteration += 1
         if self.seed is not None:
             set_seed(self.args.seed)
@@ -148,6 +158,7 @@ class student:
                 lr_scheduler=lr_scheduler,
                 optimizer=optimizer,
                 args=self.args,
+                classification=self.is_classification,
                 dic_classes=self.dic_classes,
             )
 
@@ -175,9 +186,11 @@ class student:
                 logger.info(log_msg)
 
                 if self.run is not None and LOG_TRAIN:
-                    self.run[f"{self.iteration}-eval-acc"].log(eval_metrics[0], step=epoch)
-                    self.run[f"{self.iteration}-eval-f1"].log(eval_metrics[1], step=epoch)
-
+                    if self.is_classification:
+                        self.run[f"{self.iteration}-eval-acc"].log(eval_metrics[0], step=epoch)
+                        self.run[f"{self.iteration}-eval-f1"].log(eval_metrics[1], step=epoch)
+                    else:
+                        self.run[f"{self.iteration}-eval-L2"].log(eval_metrics[0], step=epoch)
             # log metrics are desactivated
             if self.run is not None and LOG_TRAIN:
                 stats = {

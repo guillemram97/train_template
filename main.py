@@ -47,7 +47,6 @@ def main():
         )
     online_dataloader = task.data["online_dataloader"]
     st = student(args, task, run, accelerator)
-    metric = Metric(args, soft=args.soft_labels, online=True)
     cache = cache_store(args)
     # Initialize student model
     # If we put a checkpoint, we load the model and we skip the first $checkpoint steps
