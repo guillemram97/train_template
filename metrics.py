@@ -52,7 +52,7 @@ class Metric:
     Not during training
     """
 
-    def __init__(self, args, soft=False, online=False):
+    def __init__(self, args, soft=False, classification=False):
         self.task_name = args.task_name
         #self.tokenizer = BertTokenizer.from_pretrained(
         #    args.model_name_or_path, model_max_length=args.max_length
@@ -62,9 +62,10 @@ class Metric:
         )
         self.predictions = []
         self.references = []
-        self.online = online
+        self.online = False
         self.args = args
         self.soft = soft
+        self.classification = classification
 
     def reset(self):
         self.predictions = []
@@ -88,15 +89,25 @@ class Metric:
         self.references = self.references + references
 
     def compute(self):
-        if self.soft:
-            metrics = evaluate_soft(
-                self.predictions, self.references, self.args.temperature
+        if self.classification:
+            metrics = evaluate_classification(
+                self.predictions, self.references
+            )
+
+        elif self.soft:
+            metrics = evaluate_soft_regression(
+                self.predictions, self.references
             )
         else:
             metrics = evaluate_hard(self.predictions, self.references, self.task_name)
         self.reset()
         return metrics
 
+def evaluate_soft_regression(predictions, data):
+    diff = 0
+    for idx, pred in enumerate(predictions):
+        diff += (pred-data[0])**2
+    return [diff/(idx+1)]
 
 def evaluate_soft(predictions, data, temperature=1):
     cross_entropy_score = []
@@ -115,6 +126,14 @@ def evaluate_soft(predictions, data, temperature=1):
     # sum(accuracy) / len(data)
     # f1_score(new_data, new_predictions, average="macro")
     return [sum(accuracy) / len(data), sum(cross_entropy_score) / len(data)]
+
+
+def evaluate_classification(predictions, data):
+    acc = 0
+    for idx, pred in enumerate(predictions):
+        acc += 1*(pred==data[idx])
+    acc = acc / len(data)
+    return [acc, f1_score(predictions, data, average='macro')]
 
 
 def evaluate_hard(predictions, data, task):

@@ -19,7 +19,7 @@ cross_entropy = CrossEntropyLoss()
 softmax = Softmax()
 
 
-def get_model(args):
+def get_model(args, nclasses=0):
     if args.model_name_or_path in ['google/flan-t5-large', 'google/flan-t5-base']:
         model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name_or_path)
     elif args.model_name_or_path in ['bert-base']:
@@ -29,7 +29,7 @@ def get_model(args):
     elif args.model_name_or_path in ['EleutherAI/pythia-1b-deduped']:
         model = GPTNeoXForCausalLM.from_pretrained(args.model_name_or_path)
     elif args.model_name_or_path in ["distilbert-base-uncased"]:
-        model = AutoModelForSequenceClassification.from_pretrained(args.model_name_or_path, num_labels=2)
+        model = AutoModelForSequenceClassification.from_pretrained(args.model_name_or_path, num_labels=nclasses)
     return model
 
 
@@ -71,6 +71,10 @@ def soft_loss(logits, soft_labels, temperature=1):
     return cross_batch / logits.shape[0]
 
 
+def classification_loss(logits, labels):
+    print('soft_loss')
+    return
+
 # de moment nomes generar prob de un token
 def soft_loss_weighted(logits, soft_labels, temperature=1):
     # afegir weights
@@ -92,8 +96,10 @@ def train_epoch(
     lr_scheduler,
     optimizer,
     args,
+    classification,
     dic_classes=None,
-):
+    ):
+
     model.train()
     set_seeds(args.seed)
     total_loss = 0
@@ -109,28 +115,10 @@ def train_epoch(
                 attention_mask=batch.attention_mask,
                 labels=batch.gold_hard,
             )
-        else:
-            outputs = model(
-                input_ids=batch.input_ids,
-                attention_mask=batch.attention_mask,
-                labels=batch.llm_hard,
-            )
-
-        if args.soft_labels:
-            if args.target == "gold":
-                loss = soft_loss(
-                    outputs[1][:, 0, dic_classes].cpu(),
-                    batch.gold_soft.cpu().float(),
-                    args.temperature,
-                )
+            if not classification:
+                loss = ((outputs.logits - batch.gold_hard)**2).mean()
             else:
-                loss = soft_loss(
-                    outputs[1][:, 0, dic_classes].cpu(),
-                    batch.llm_soft.cpu(),
-                    args.temperature,
-                )
-        else:
-            loss = outputs.loss
+                loss = outputs.loss
 
         total_loss += loss.detach().float().item()
         losses.append(loss.detach().float().item())
@@ -157,31 +145,15 @@ def evaluate_model(
 
     for step, batch in tqdm(enumerate(eval_dataloader)):
         with torch.no_grad():
-            if metric.soft:
-                predictions = model.generate(
-                    **{
-                        "input_ids": batch["input_ids"].cuda(),
-                        "attention_mask": batch["attention_mask"].cuda(),
-                    },
-                    max_new_tokens=1,
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                )
-                predictions = list(np.array(predictions[1][0].cpu())[:, dic_classes])
-            else:
-                predictions = model.generate(
-                    **{
-                        "input_ids": batch["input_ids"],
-                        "attention_mask": batch["attention_mask"],
-                    },
-                    num_beams=args.num_beams,
-                    max_length=args.max_out_length,
-                    decoder_start_token_id=model.config.bos_token_id,
-                )
-                predictions, references = accelerator.gather(
-                    (predictions, batch[target + "_hard"])
-                )
-
+            if model.config._name_or_path=='distilbert-base-uncased':
+                if metric.soft == False:
+                    predictions = torch.tensor(model(input_ids=batch.input_ids, attention_mask=batch.attention_mask).logits).argmax(1) #aixo diferent
+                else:
+                    predictions = model(input_ids=batch.input_ids, attention_mask=batch.attention_mask).logits[:, 0].tolist()
+                references = batch.gold_hard
+                if torch.is_tensor(references):
+                    references = [ref[0] for ref in references.tolist()]
+       
         # If we are in a multiprocess environment, the last batch has duplicates
         if accelerator.num_processes > 1:
             if step == len(eval_dataloader) - 1:

@@ -1,18 +1,16 @@
-for BASE_MODEL in google/flan-t5-base google/flan-t5-large
+for TASK in babi_qa natural_qa wikifact
 do
-    for TASK_NAME in isear rt-polarity
-    do
-        for SEED in 0 1 2
-        do
-            export SAVE_CHECKPOINT=yes
-            export TASK_NAME
-            export SEED
-            export MODEL
-            export TRAIN_SAMPLES=1200
-            export RETRAIN_FREQ=100
-            export BUDGET=1000
-            PART=csd3
-            sbatch --export=ALL scripts/sub_$PART.sh
-        done
-    done
+    #for MODEL in Mixtral-Instruct-4b Mistral-Instruct-4b #Llama-7b-4b Llama-13b-4b llama-1-30b-4b falcon-40b-4b #llama-1-65b-4b Llama-70b-4b
+    #do
+     #   for SEED in 0
+     #   do
+	export TASK_NAME=${TASK}
+	export SEED=0
+	PART=csd3
+	export PART
+	sbatch --export=ALL scripts/sub_$PART.sh
+        #done
+   # done
+    #export TASK_NAME=${TASK}_prob_${MODEL}
+    #sbatch --export=ALL scripts/sub_$PART.sh
 done
