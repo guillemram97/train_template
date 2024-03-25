@@ -1,4 +1,5 @@
 data/*
+scripts/cluster.sh
 *.pyc
 __pycache__/*
 slurm*
