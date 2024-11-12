@@ -20,16 +20,14 @@ softmax = Softmax()
 
 
 def get_model(args, nclasses=0):
-    if args.model_name_or_path in ['google/flan-t5-large', 'google/flan-t5-base']:
-        model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name_or_path)
-    elif args.model_name_or_path in ['bert-base']:
+    if args.model_name_or_path in ['bert-base']:
         model = BertModel.from_pretrained( args.model_name_or_path,)
     elif args.model_name_or_path[1:] in ['5-base', '5-large']:
         model = T5ForConditionalGeneration.from_pretrained(args.model_name_or_path,)
     elif args.model_name_or_path in ['EleutherAI/pythia-1b-deduped']:
         model = GPTNeoXForCausalLM.from_pretrained(args.model_name_or_path)
-    elif args.model_name_or_path in ["distilbert-base-uncased"]:
-        model = AutoModelForSequenceClassification.from_pretrained(args.model_name_or_path, num_labels=nclasses)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map = 'auto')
     return model
 
 
@@ -109,16 +107,16 @@ def train_epoch(
     freq = 100
 
     for step, batch in enumerate(train_dataloader):
-        if args.target == "gold":
-            outputs = model(
-                input_ids=batch.input_ids,
-                attention_mask=batch.attention_mask,
-                labels=batch.gold_hard,
-            )
-            if not classification:
-                loss = ((outputs.logits - batch.gold_hard)**2).mean()
-            else:
-                loss = outputs.loss
+
+        outputs = model(
+            input_ids=batch.input_ids,
+            attention_mask=batch.attention_mask,
+            labels=batch.gold_hard,
+        )
+        if not classification:
+            loss = ((outputs.logits - batch.gold_hard)**2).mean()
+        else:
+            loss = outputs.loss
 
         total_loss += loss.detach().float().item()
         losses.append(loss.detach().float().item())
@@ -138,7 +136,7 @@ def train_epoch(
 
 
 def evaluate_model(
-    model, accelerator, eval_dataloader, metric, args, dic_classes, target
+    model, accelerator, eval_dataloader, metric, args, dic_classes
 ):
     model.eval()
     samples_seen = 0

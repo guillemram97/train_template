@@ -4,31 +4,22 @@ source scripts/cluster.sh
 TAGS="${TAGS:=debug}"
 SAVE_CHECKPOINT="${SAVE_CHECKPOINT:=yes}"
 
-TASK_NAME="${TASK_NAME:=isear}"
-MODEL_NAME_OR_PATH="${BASE_MODEL:=distilbert-base-uncased}"
-BUDGET="${BUDGET:=1000}"
+TASK_NAME="${TASK_NAME:=contmod}"
+MODEL_NAME_OR_PATH="${BASE_MODEL:=google/gemma-2-27b-it}"
 COST_EXT="${COST_EXT:=1}"
 RETRAIN_FREQ="${RETRAIN_FREQ:=100}"
 SOFT_LABELS="${SOFT_LABELS=0}"
-TARGET="${TARGET:=gold}"
-STRATEGY="${STRATEGY:=b1}"
 N_INIT="${N_INIT:=100}"
 CHECKPOINT="${CHECKPOINT:=-1}"
-P_STRAT="${P_STRAT:=0}"
-ORACLE="${ORACLE:=0}"
-ORACLE_BT="${ORACLE_BT:=0}"
 TEMPERATURE="${TEMPERATURE:=1.0}"
 MAX_LEN="${MAX_LEN:=512}"
 MAX_OUT_LEN="${MAX_OUT_LEN:=2}" # WE LIMIT FOR CLASSIFICATION
 NUM_BEAMS="${NUM_BEAMS:=1}"
-ONLY_IMPROVE="${ONLY_IMPROVE:=0}"
-ACTIVE="${ACTIVE:=no}"
 LR="${LR:=3e-5}"
 BATCH="${BATCH:=16}"
 BATCH_EVAL="${BATCH_EVAL:=16}"
 EPOCHS="${EPOCHS:=100}" # Keep it fixed
 WEIGHT_DECAY="${WEIGHT_DECAY:=1e-2}"
-IGNORE_LLM="${IGNORE_LLM:=0}"
 
 # Don't limit the number of examples and check how long it takes to execute a
 # full run, maybe it takes less than a day and we're fine, if it's not then
@@ -50,26 +41,13 @@ SEED="${SEED=0}"
 python -m main \
   --model_name_or_path $BASE_MODEL \
   --task_name $TASK_NAME \
-  --budget $BUDGET \
-  --n_init $N_INIT \
-  --p_strat $P_STRAT \
-  --cost_ext $COST_EXT \
   --checkpoint $CHECKPOINT \
   --save_checkpoint $SAVE_CHECKPOINT \
-  --retrain_freq $RETRAIN_FREQ \
-  --soft_labels $SOFT_LABELS \
   --temperature $TEMPERATURE \
-  --target $TARGET \
-  --active $ACTIVE \
-  --oracle $ORACLE \
-  --oracle_BT $ORACLE_BT \
-  --strategy $STRATEGY \
   --max_length $MAX_LEN \
-  --only_improve $ONLY_IMPROVE \
   --per_device_train_batch_size $BATCH \
   --per_device_eval_batch_size $BATCH_EVAL \
   --learning_rate $LR \
-  --ignore_llm $IGNORE_LLM \
   --num_train_epochs $EPOCHS \
   --train_samples $TRAIN_SAMPLES \
   --eval_samples $EVAL_SAMPLES \

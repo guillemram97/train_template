@@ -10,8 +10,7 @@ from utils.online_logs import (
 )
 import numpy as np
 from metrics import Metric
-from student import student
-from cache import cache_store
+from adapted_model import AdaptedModel
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from task import (
@@ -39,46 +38,13 @@ def main():
         args=args,
         model=None,
     )
-    if not task.is_classification:
-        args.is_classification = False
-    else:
-        args.soft_labels = (
-            False  # MIRAR AIXO, ESTAVA A TRUE
-        )
-    online_dataloader = task.data["online_dataloader"]
-    st = student(args, task, run, accelerator)
-    cache = cache_store(args)
-    # Initialize student model
-    # If we put a checkpoint, we load the model and we skip the first $checkpoint steps
-    if args.checkpoint != "-1":
-        PATH = "checkpoints/" + args.task_name + "/" + str(args.checkpoint) + ".pt"
-        st.init_checkpoint(PATH)
 
-    stop_retraining = False
-    send_update = False
+    train_dataloader = task.data['train_dataloader']
+    eval_dataloader = task.data['test_dataloader']
+    st = AdaptedModel(args, task, run, accelerator)
+    st.train(train_dataloader, eval_dataloader)
 
-    for step, sample in enumerate(online_dataloader):
-        # IF WE HAVE A CHECKPOINT, WE SKIP N_INIT STEPS
-        if step < int(args.budget):
-            if args.checkpoint == "-1" or step >= args.n_init:
-                gc.collect()
-                cache.save_cache(sample)
-
-                if step + 1 and (step + 1) % args.retrain_freq == 0 and not stop_retraining:
-                    set_seeds(args.seed)
-                    cache_tmp = cache.retrieve_cache()
-                    train_dataloader, eval_dataloader = make_datacollator(
-                        args, task.tokenizer, cache_tmp
-                    )
-                    train_dataloader, eval_dataloader = accelerator.prepare(
-                        train_dataloader, eval_dataloader
-                    )
-                    st.train(train_dataloader, eval_dataloader)
-
-                    del train_dataloader, eval_dataloader
-
-    if run is not None:
-        run.stop()
+    if run is not None: run.stop()
 
 
 if __name__ == "__main__":

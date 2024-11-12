@@ -33,12 +33,11 @@ logger = get_logger(__name__)
 LOG_TRAIN = True
 
 
-class student:
+class AdaptedModel:
     def __init__(self, args, task, run, accelerator):
         self.cache = []
         self.task_name = args.task_name
         self.seed = args.seed
-        self.target = args.target
         self.args = get_hparams(args, self.task_name)
         self.test = task.data["test_dataloader"]
         self.run = run
@@ -46,18 +45,10 @@ class student:
         self.accelerator = accelerator
         self.iteration = 0
         self.save_checkpoint = args.save_checkpoint
-        self.soft_labels = args.soft_labels
         self.test_scores_gold = [0, 0]
-        self.test_scores_llm = [0, 0]
         self.suffixes = [""]
-        self.is_classification = task.is_classification
-        if task.is_classification:
-            self.dic_classes = list(task.classes_dict_gold.values())
-            self.n_classes = len(list(task.classes_dict_gold.keys()))
-        else:
-            self.dic_classes = None
-            self.n_classes = 1
-            self.soft_labels = True
+        self.dic_classes = list(task.classes_dict.values())
+        self.n_classes = len(list(task.classes_dict.keys()))
         
         self.init_model()
 
@@ -86,7 +77,6 @@ class student:
             metric=self.metric_test,
             args=self.args,
             dic_classes=self.dic_classes,
-            target="gold",
         )
 
         if self.run is not None:
@@ -173,7 +163,6 @@ class student:
                     metric=self.metric,
                     args=self.args,
                     dic_classes=self.dic_classes,
-                    target=self.target,
                 )
                 self.model.cpu()
 

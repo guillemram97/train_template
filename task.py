@@ -13,68 +13,47 @@ import pdb
 
 
 class Task:
-    def __init__(self, task_name, tokenizer, soft_labels):
+    def __init__(self, task_name, tokenizer):
         self.task_name = task_name
         DATA_DIR = os.getenv("DATA_PATH")
         self.path = os.path.join(DATA_DIR, task_name)
         self.tokenizer = tokenizer
         self.load_config()
         self.load_data()
-        self.soft_labels = soft_labels
 
     def load_config(self):
         with open(os.path.join(self.path, "config.json")) as f:
             config = json.load(f)
-        self.is_classification = config["is_classification"]
-        if self.is_classification:
             self.classes = config["classes"]
-            self.soft_classes = config["soft_classes"]
-        self.data_path = config["training_data"]
+            self.system = config["system"]
 
     def load_data(self):
         data = {}
-        for split, split_path in self.data_path.items():
-            fin = pd.read_csv(
-                os.path.join(self.path, split_path),
-                # converters={"output": literal_eval},  #this is needed for quoref!!!
-            )
-            # remove this once we have the full dataset
-            if self.task_name == "ag_news":
-                fin = pd.read_csv(os.path.join(self.path, split_path), nrows=10000)
-                if split == "test":
-                    fin = pd.read_csv(os.path.join(self.path, split_path), nrows=1000)
-            inputs = list(fin["input"].values.astype(str))
-            gold_hard = list(fin["gold_hard"].values.astype(str))
-
-            ## preferred to remove this
-            if self.task_name == "quoref":
-                from ast import literal_eval
-
-                new_in = []
-                new_out = []
-                for inp, out in zip(inputs, outputs):
-                    # contatenate all with , and 'and'?
-                    for possible_target in out:
-                        new_in.append(inp)
-                        new_out.append(possible_target)
-                inputs = new_in
-                outputs = new_out
-            data[split] = arrow_dataset.Dataset.from_dict(
-                {
-                    "inputs": inputs,
-                    "gold_hard": gold_hard,
-                }
-            )
-        self.raw_data = datasets.DatasetDict(data)
+        df = pd.read_csv(os.path.join(self.path, "data.csv"), nrows=10000)
+        inputs = list(df["prompt"].values.astype(str))
+        outputs = list(df["output"].values.astype(str))
+        
+        data = arrow_dataset.Dataset.from_dict(
+            {
+                "inputs": inputs,
+                "outputs": outputs,
+            }
+        )
+        data_train = data[1250:]
+        data_eval = data[1000:1250]
+        data_test = data[:1000]
+        self.raw_data = {}
+        self.raw_data['train'] = datasets.DatasetDict(data_train)
+        self.raw_data['eval'] = datasets.DatasetDict(data_eval)
+        self.raw_data['test'] = datasets.DatasetDict(data_test)
 
     def load_classes(self):
         self.classes_dict = {}
-        self.classes_dict_gold = {}
         for idx, class_name in enumerate(self.classes):
-            target = self.tokenizer.encode(class_name, add_special_tokens=False)[0]
-            self.classes_dict[self.soft_classes[idx]] = target
-            self.classes_dict_gold[class_name] = target
+            target = self.tokenizer.encode(class_name, add_special_tokens=False)[0] # I should check this for Mixtral as well!
+            self.classes_dict[class_name] = target
         return
+        
 
     def preprocess(self, accelerator, args, model=None):
         def process_data_to_model_inputs(is_eval: bool, batch):
@@ -87,62 +66,15 @@ class Task:
                 truncation=True,
             ).input_ids
 
-            if self.is_classification:
-                out["gold_soft"] = make_soft(batch["gold_hard"], target="gold")
-
-
-                # limited to max_out_length
-                if self.is_classification:
-                    out["gold_hard"] = [list(self.classes_dict_gold.keys()).index(element) for element in batch['gold_hard']]
-                else:
-                    out["gold_hard"] = self.tokenizer(
-                        batch["gold_hard"],
-                        padding=False,
-                        max_length=args.max_out_length,
-                        truncation=True,
-                    ).input_ids
-            else:
-                out["gold_hard"] = [float(b) for b in batch['gold_hard']]
+            out["outputs"] = [list(self.classes_dict.keys()).index(element) for element in batch['outputs']]
             return out
 
         def collate_for_eval(default_collate, batch):
             inputs = [{"input_ids": x["input_ids"]} for x in batch]
             out = default_collate(inputs)
-            out["gold_hard"] = [x["gold_hard"] for x in batch]
-            if self.is_classification:
-                out["gold_soft"] = [x["gold_soft"] for x in batch]
+            out["outputs"] = [x["outputs"] for x in batch]
             return out
 
-        def select_classes(batch_soft_labels):
-            new_batch = []
-            for soft_labels in batch_soft_labels:
-                soft_labels = ast.literal_eval(soft_labels)
-                # in classification we only have one token
-                soft_labels = soft_labels[0]
-                new_soft_labels = []
-                for key in self.soft_classes:
-                    if key in soft_labels:
-                        new_soft_labels.append(soft_labels[key])
-                    else:
-                        new_soft_labels.append(-100)
-                new_batch.append(new_soft_labels)
-            return new_batch
-
-        def make_soft(batch_hard_labels, target):
-            if target == "gold":
-                classes_dict = self.classes_dict_gold
-            else:
-                classes_dict = self.classes_dict
-            new_batch = []
-            for hard_label in batch_hard_labels:
-                new_soft_labels = []
-                for label in classes_dict.keys():
-                    if label == hard_label:
-                        new_soft_labels.append(0)
-                    else:
-                        new_soft_labels.append(-100)
-                new_batch.append(new_soft_labels)
-            return new_batch
 
         data_collator = DataCollatorForSeq2Seq(
             self.tokenizer, model=model, padding="longest"
@@ -151,16 +83,12 @@ class Task:
 
         processed_data = {}
 
-        for split in self.data_path.keys():
+        for split in ['train', 'eval', 'test']:
             max_samples = getattr(args, f"{split}_samples")
-            #self.raw_data[split] = random_subset(
-            #    dataset=self.raw_data[split],
-            #    max_samples=max_samples,
-            #    seed=args.seed,
-            #)
-
+            tmp_list = []
+            for input, output in zip(self.raw_data[split]['inputs'], self.raw_data[split]['outputs']): tmp_list.append({"inputs": input, "outputs": output})
             self.raw_data[split] = arrow_dataset.Dataset.from_list(
-                list(self.raw_data[split])
+                tmp_list
             )
             processed_data[split] = self.raw_data[split].map(
                 partial(process_data_to_model_inputs, split in ["test"]),
@@ -169,7 +97,8 @@ class Task:
                 remove_columns=self.raw_data[split].column_names,
             )
 
-        online_dataloader = DataLoader(
+
+        train_dataloader = DataLoader(
             processed_data["train"],
             shuffle=False,
             collate_fn=data_collator,
@@ -181,14 +110,22 @@ class Task:
             collate_fn=eval_collator,
             batch_size=args.per_device_eval_batch_size,
         )
+
+        eval_dataloader = DataLoader(
+            processed_data["eval"],
+            collate_fn=eval_collator,
+            batch_size=args.per_device_eval_batch_size,
+        )
         
-        online_dataloader, test_dataloader = accelerator.prepare(
-            online_dataloader,
+        train_dataloader, eval_dataloader, test_dataloader = accelerator.prepare(
+            train_dataloader,
+            eval_dataloader,
             test_dataloader,
         )
 
         self.data = {
-            "online_dataloader": online_dataloader,
+            "train_dataloader": train_dataloader,
+            "eval_dataloader": eval_dataloader,
             "test_dataloader": test_dataloader,
         }
         return
@@ -205,24 +142,64 @@ def random_subset(dataset, max_samples: int, seed: int = 42):
 
 def get_task(accelerator, args, model=None):
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model_name_or_path, model_max_length=args.max_length
+        args.model_name_or_path, model_max_length=args.max_length, use_auth_token=True
     )
 
     # load config, data, and preprocess
-    task = Task(args.task_name, tokenizer, args.soft_labels)
-    if task.is_classification:
-        task.load_classes()
+    task = Task(args.task_name, tokenizer)
+    task.load_classes()
     task.preprocess(accelerator, args, model=None)
     return task
 
 
+
+
+def apply_chat_template(sys_prompt, prompt):
+    messages = [
+        {"role": "user", "content": sys_prompt + "\n\n" + prompt},
+    ]
+    return messages
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def make_datacollator(args, tokenizer, processed_data, model=None):
-    # for key, value in processed_data.items():
-    #    for idx, element in enumerate(value):
-    #        processed_data[key][idx] = torch.tensor(element).cuda()
+
     processed_data = arrow_dataset.Dataset.from_dict(processed_data)
     data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, padding="longest")
-    aux = processed_data.train_test_split(test_size=0.1)
+    aux = processed_data.train_test_split(test_size=0.15)
+
+    test_dataloader = DataLoader(
+        aux["test"],
+        shuffle=True,
+        collate_fn=data_collator,
+        batch_size=args.per_device_eval_batch_size,
+    )
+
+    aux = aux["train"]
+    aux = aux.train_test_split(test_size=0.15)
+    
     train_dataloader = DataLoader(
         aux["train"],
         shuffle=True,
@@ -235,4 +212,5 @@ def make_datacollator(args, tokenizer, processed_data, model=None):
         collate_fn=data_collator,
         batch_size=args.per_device_eval_batch_size,
     )
+    
     return train_dataloader, eval_dataloader
