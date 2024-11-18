@@ -6,7 +6,7 @@ from torch import Tensor
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
-
+import pdb
 
 EPS = 1e-12
 
@@ -40,19 +40,22 @@ class LoRALinear(ModularModule):
         if bias is None:
             bias = torch.nn.Parameter(torch.tensor(0.0), requires_grad=False)
 
-        assert weight.size(0) == weight.size(1)
+        #assert weight.size(0) == weight.size(1)
 
-        D_MODEL = weight.size(0)
+        D_MODEL_A = weight.size(1)
+        D_MODEL_B = weight.size(0)
 
         self.r = r
 
         self.weight = nn.Parameter(weight.data, requires_grad=False)
-        self.bias = nn.Parameter(bias.data, requires_grad=False)
 
-        total_shape = (D_MODEL, r)
+        total_shape_A = (r, D_MODEL_A,)
+        total_shape_B = (D_MODEL_B, r)
+        self.device = self.weight.device
 
-        self.A = nn.Parameter(torch.zeros(total_shape), requires_grad=True)
-        self.B = nn.Parameter(torch.zeros(total_shape), requires_grad=True)
+        self.bias = nn.Parameter(bias.data, requires_grad=False).to(self.device)
+        self.A = nn.Parameter(torch.zeros(total_shape_A), requires_grad=True).to(self.device)
+        self.B = nn.Parameter(torch.zeros(total_shape_B), requires_grad=True).to(self.device)
 
         self.scaling = lora_scaling
         self.reset_parameters()
@@ -67,11 +70,9 @@ class LoRALinear(ModularModule):
         """
         input: [batch_size, seq_length, input_features]
         """
-
-        BATCH, SEQ_LEN, D_MODEL = input.shape
-
-        AB = torch.einsum("ir,or->io", self.A, self.B)
-
-        output = torch.einsum("bni,io->bno", input, AB)
+        # I SHOULD REVISE ALL OF THIS
+        AB = torch.einsum("or,ri->oi", self.B, self.A)
+        output = torch.einsum("oi, bni->bno", AB, input)
+        F.linear(input, self.weight, self.bias)
         output = F.linear(input, self.weight, self.bias) + output * self.scaling
         return output

@@ -85,7 +85,7 @@ def set_seeds(seed: int = 0, is_deterministic: bool = True):
 
 
 class EarlyStopper:
-    def __init__(self, stop_epochs, classification, save_mem=False):
+    def __init__(self, stop_epochs, classification=True, save_mem=False):
         self.counter = 0
         self.best_model = None
         self.save_mem = save_mem
@@ -100,17 +100,13 @@ class EarlyStopper:
         eval_metric: bigger -> better
         """
         self.counter += 1
-        if not self.classification:
-            if eval_metric < self.best_val:
-                self.counter = 0
-                self.best_val = eval_metric
-                self.best_model = copy.deepcopy(model)
-
-        else:
+        #revise we do it on the right metric!!
+        if self.classification:
             if eval_metric > self.best_val:
                 self.counter = 0
                 self.best_val = eval_metric
                 self.best_model = copy.deepcopy(model)
+
 
     def should_finish(self):
         """

@@ -13,6 +13,12 @@ def parse_args():
         help="The name of the task to train on.",
     )
     parser.add_argument(
+        "--quantization",
+        type=int,
+        help="Number of bits of quantization. 32 means no quantization.",
+        default=32,
+    )
+    parser.add_argument(
         "--save_checkpoint",
         type=str,
         default="no",

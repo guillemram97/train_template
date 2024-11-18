@@ -38,28 +38,3 @@ LORA_SCALING="${LORA_SCALING:=0.25}"
 
 
 SEED="${SEED=0}"
-
-python -m main \
-  --model_name_or_path $BASE_MODEL \
-  --quantization $QUANTIZATION \
-  --task_name $TASK_NAME \
-  --checkpoint $CHECKPOINT \
-  --save_checkpoint $SAVE_CHECKPOINT \
-  --temperature $TEMPERATURE \
-  --max_length $MAX_LEN \
-  --per_device_train_batch_size $BATCH \
-  --per_device_eval_batch_size $BATCH_EVAL \
-  --learning_rate $LR \
-  --num_train_epochs $EPOCHS \
-  --train_samples $TRAIN_SAMPLES \
-  --eval_samples $EVAL_SAMPLES \
-  --test_samples $TEST_SAMPLES \
-  --eval_every_epochs $EVAL_EVERY_EPOCHS \
-  --early_stop $EARLY_STOP \
-  --r $R \
-  --lora_scaling $LORA_SCALING \
-  --num_beams $NUM_BEAMS \
-  --weight_decay $WEIGHT_DECAY \
-  --tags $TAGS \
-  --max_out_length $MAX_OUT_LEN \
-  --seed $SEED

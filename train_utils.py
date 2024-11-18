@@ -12,7 +12,7 @@ from torch.nn import CrossEntropyLoss, Softmax
 
 from utils import set_seeds
 
-from transformers import T5ForConditionalGeneration, BertModel, AutoModelForCausalLM, AutoModelForSeq2SeqLM, GPTNeoXForCausalLM, AutoModelForSequenceClassification
+from transformers import T5ForConditionalGeneration, BertModel, AutoModelForCausalLM, AutoModelForSeq2SeqLM, GPTNeoXForCausalLM, AutoModelForSequenceClassification, BitsAndBytesConfig
 
 
 cross_entropy = CrossEntropyLoss()
@@ -20,6 +20,24 @@ softmax = Softmax()
 
 
 def get_model(args, nclasses=0):
+    to_config = {4:{'load_in_4bit':True}, 8:{'load_in_8bit':True}, 32:{}}
+    #bnb_config = BitsAndBytesConfig(**to_config[args.quantization])
+    bnb_4bit_quant_type="nf4"
+    # bnb_4bit_use_double_quant=True
+    bnb_4bit_compute_dtype="bfloat16"
+    bnb_4bit_quant_storage_dtype="bfloat16"
+    use_nested_quant = False
+    use_4bit_quantization = True
+    quant_storage_dtype = getattr(torch, bnb_4bit_quant_storage_dtype)
+    compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=use_4bit_quantization,
+        bnb_4bit_quant_type=bnb_4bit_quant_type,
+        bnb_4bit_compute_dtype=compute_dtype,
+        bnb_4bit_use_double_quant=use_nested_quant,
+        bnb_4bit_quant_storage=quant_storage_dtype,
+    )
+
     if args.model_name_or_path in ['bert-base']:
         model = BertModel.from_pretrained( args.model_name_or_path,)
     elif args.model_name_or_path[1:] in ['5-base', '5-large']:
@@ -27,7 +45,8 @@ def get_model(args, nclasses=0):
     elif args.model_name_or_path in ['EleutherAI/pythia-1b-deduped']:
         model = GPTNeoXForCausalLM.from_pretrained(args.model_name_or_path)
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map = 'auto')
+        #SHALL WE DO SOMETHING ABOUT BITSANDBYTES?
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, quantization_config=bnb_config, torch_dtype = torch.bfloat16)#device_map='auto')#, quantization_config=bnb_config)
     return model
 
 
@@ -69,23 +88,6 @@ def soft_loss(logits, soft_labels, temperature=1):
     return cross_batch / logits.shape[0]
 
 
-def classification_loss(logits, labels):
-    print('soft_loss')
-    return
-
-# de moment nomes generar prob de un token
-def soft_loss_weighted(logits, soft_labels, temperature=1):
-    # afegir weights
-    cross_batch = 0
-    for idx, label in enumerate(soft_labels):
-        logits[idx] = softmax(logits[idx])
-        label = softmax(label / temperature)
-        factor = 1
-        if label[1] > label[0]:
-            factor = 10
-        cross_batch += factor * cross_entropy(logits[idx], label)
-    return cross_batch / logits.shape[0]
-
 
 def train_epoch(
     model,
@@ -94,7 +96,6 @@ def train_epoch(
     lr_scheduler,
     optimizer,
     args,
-    classification,
     dic_classes=None,
     ):
 
@@ -107,16 +108,12 @@ def train_epoch(
     freq = 100
 
     for step, batch in enumerate(train_dataloader):
-
         outputs = model(
             input_ids=batch.input_ids,
             attention_mask=batch.attention_mask,
-            labels=batch.gold_hard,
+            labels=batch.outputs,
         )
-        if not classification:
-            loss = ((outputs.logits - batch.gold_hard)**2).mean()
-        else:
-            loss = outputs.loss
+        loss = outputs.loss
 
         total_loss += loss.detach().float().item()
         losses.append(loss.detach().float().item())

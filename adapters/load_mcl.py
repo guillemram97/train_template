@@ -4,20 +4,22 @@ from transformers.models.bert.modeling_bert import BertSelfOutput
 from torch import nn
 
 from .adapters import LoRALinear
+import pdb
 
 
 logger = logging.getLogger(__name__)
 
 ATTENTION_LINEARS_T5 = ["k", "v", "q", "o"]
 ATTENTION_LINEARS_BERT = ["key", "query", "value"]
-ATTENTION_LINEARS = ATTENTION_LINEARS_T5 + ATTENTION_LINEARS_BERT
+# maybe we wan to add up_proj, down_proj, gate_proj ?
+ATTENTION_LINEARS_GEMMA = ["k_proj", "q_proj", "v_proj"]
+ATTENTION_LINEARS = ATTENTION_LINEARS_T5 + ATTENTION_LINEARS_BERT + ATTENTION_LINEARS_GEMMA
 
 
 def replace_layers(model, adapter_class, ac_kwargs):
     for name, module in model.named_children():
         if len(list(module.children())) > 0:
             replace_layers(module, adapter_class, ac_kwargs)
-
         if isinstance(module, nn.Linear):
             if name in ATTENTION_LINEARS:
                 new_linear = adapter_class(module.weight, module.bias, **ac_kwargs)
